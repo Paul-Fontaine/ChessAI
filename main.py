@@ -1,3 +1,5 @@
+import pygame
+
 from engine import ChessEngine
 from gui.gui import *
 
@@ -17,6 +19,12 @@ def main(time_limit=4.0):
     while running:
         draw_board(screen, board)
 
+        # if a move was made, highlight the squares
+        if board.move_stack:
+            last_move = board.peek()
+            piece_involved = board.piece_at(last_move.to_square)
+            highlight_move_squares(screen, last_move, piece_involved)
+
         # Highlight selected piece and legal moves
         if selected_square is not None:
             highlight_legal_moves(screen, board, selected_square)
@@ -29,13 +37,14 @@ def main(time_limit=4.0):
             engine_move, score, depth, node_count = engine.search(board, time_limit=time_limit)  # Engine gets 4 seconds
             if engine_move:
                 board.push(engine_move)
-                print(f"move: {engine_move} ; score: {score} ; depth reached: {depth} ; node_count: {node_count}")
+                print(f"move: {engine_move} ; score: {-score/100:.1f} ; depth reached: {depth} ; node_count: {node_count}")
             continue  # Skip player input on engine turn
 
         # Handle mouse clicks
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                pygame.quit()
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 square = get_square(pygame.mouse.get_pos())
@@ -53,17 +62,33 @@ def main(time_limit=4.0):
                         board.push(move)
                     selected_square = None
 
-        # check if the game is over
-        if board.is_game_over():
+        # check if there is a checkmate or a draw
+        if board.is_checkmate():
             running = False
-            # update the screen to show the final position
-            draw_board(screen, board)
-            pygame.display.flip()
-            pygame.time.wait(200)
+            winner = "White" if board.result() == "1-0" else "Black"
+            end_message = f"Checkmate! \n{winner} wins"
+        if board.is_stalemate():
+            running = False
+            end_message = "Stalemate! \nIt's a draw"
+        if board.is_insufficient_material():
+            running = False
+            end_message = "Draw by \ninsufficient material"
+        if board.is_seventyfive_moves():
+            running = False
+            end_message = "Draw by \n75-move rule"
+        if board.is_fivefold_repetition():
+            running = False
+            end_message = "Draw by \nfivefold repetition"
+
     # end while
 
     # when the game is over, display the result
-    draw_game_over(screen, board)
+    # update the screen to show the final position
+    draw_board(screen, board)
+    pygame.display.flip()
+    pygame.time.wait(200)
+    draw_game_over(screen, board, end_message)
+    pygame.display.flip()
     # Wait until the user closes the window
     endscreen = True
     while endscreen:
@@ -75,4 +100,4 @@ def main(time_limit=4.0):
 
 
 if __name__ == "__main__":
-    main(time_limit=10.0)
+    main(time_limit=4.0)
