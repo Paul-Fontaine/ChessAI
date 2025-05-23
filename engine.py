@@ -28,81 +28,27 @@ class ChessEngine:
             chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 330,
             chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 0
         }
-        self.piece_square_tables = {
-            chess.PAWN: [
-                0  , 0  , 0  , 0  , 0  , 0  , 0  , 0  ,
-                0  , 0  , 0  , 0  , 0  , 0  , 0  , 0  ,
-                0  , 0  , 0  , 0  , 0  , 0  , 0  , 0  ,
-                0  , 0  , 0  , 0  , 0  , 0  , 0  , 0  ,
-                5  , 10 , 10 , -20, -20, -10, -10, -5 ,
-                -5 , -10, -10, -20, -20, -10, -10, -5 ,
-                5  , 10 , 10 , -20, -20, -10, -10, -5 ,
-            ],
-            chess.KNIGHT: [
-                -50, -40, -30, -30, -30, -30, -40, -50,
-                -40, -20, 0  , 0  , 0  , 0  , -20, -40,
-                -30, 0  , 10 , 15 , 15 , 10 , 0  , -30,
-                -30, 5  , 15 , 20 , 20 , 15 , 5  , -30,
-                -30, 0  , 15 , 20 , 20 , 15 , 0  , -30,
-                -30, 5  , 10 , 15 , 15 , 10 , 5  , -30,
-                -40, -20, 0  , 0  , 0  , 0  , -20, -40,
-                -50, -40, -30, -30, -30, -30, -40, -50
-            ],
-            chess.BISHOP: [
-                -20, -10, -10, -10, -10, -10, -10, -20,
-                -10, 0  , 0  , 0  , 0  , 0  , 0  , -10,
-                -10, 0  , 5  , 10 , 10 , 5  , 0  , -10,
-                -10, 5  , 5  , 10 , 10 , 5  , 5  , -10,
-                -10, 0  , 5  , 10 , 10 , 5  , 0  , -10,
-                -10, 0  , 0  , 0  , 0  , 0  , -20, -20,
-                -20, -20, -20, -20, -20, -20, -20, -20
-            ],
-            chess.ROOK: [
-                
-            ]
-        }
 
     # -----------------------------------
-    # Evaluation Function
+    # Basic Evaluation Function
     # -----------------------------------
     def evaluate(self, board):
-        self.count_material_evaluation(board)
+        if board.is_checkmate():
+            return -self.INF if board.turn else self.INF  # board.turn is True if white's turn
+        if board.is_stalemate() or board.is_insufficient_material():
+            return 0
 
-    # -----------------------------------
-    # Iterative Deepening Search
-    # -----------------------------------
-    def search(self, board, time_limit=1.0) -> (chess.Move, int, int):
-        self.start_time = time.time()
-        self.time_limit = time_limit
-        best_move = None
-        try:
-            for depth in range(1, self.MAX_DEPTH + 1):
-                self.node_count = 0
-                score = self.alpha_beta(board, depth, -self.INF, self.INF, is_pv_node=True, ply=0)
-                hash_key = chess.polyglot.zobrist_hash(board)
-                best_move = self.tt[hash_key].best_move if hash_key in self.tt else best_move
-                if time.time() - self.start_time > self.time_limit:
-                    break
-        except TimeoutError:
-            pass
-
-        if best_move is None:
-            raise TimeoutError("No best move found within time limit.")
-
-        return best_move, score, depth, self.node_count
+        score = 0
+        for piece_type in self.piece_values:
+            score += len(board.pieces(piece_type, chess.WHITE)) * self.piece_values[piece_type]
+            score -= len(board.pieces(piece_type, chess.BLACK)) * self.piece_values[piece_type]
+        return score
 
     # -----------------------------------
     # Zobrist Hashing using python-chess
     # -----------------------------------
-    @staticmethod
-    def hash_board(board):
+    def hash_board(self, board):
         return chess.polyglot.zobrist_hash(board)
-
-    @staticmethod
-    def is_drawn(board) -> chess.Outcome | False:
-        if board.is_stalemate() or board.is_insufficient_material() or board.is_fivefold_repetition() or board.is_seventyfive_moves():
-            return board.outcome()
-        return False
 
     # -----------------------------------
     # Move Ordering Heuristic
@@ -191,20 +137,25 @@ class ChessEngine:
 
         return best_score
 
-    def count_material_evaluation(self, board):
-        if board.is_checkmate():
-            return -self.INF if board.turn else self.INF  # board.turn is True if white's turn
-        if self.is_drawn(board):
-            return 0
+    # -----------------------------------
+    # Iterative Deepening Search
+    # -----------------------------------
+    def search(self, board, time_limit=1.0) -> (chess.Move, int, int):
+        self.start_time = time.time()
+        self.time_limit = time_limit
+        best_move = None
+        try:
+            for depth in range(1, self.MAX_DEPTH + 1):
+                self.node_count = 0
+                score = self.alpha_beta(board, depth, -self.INF, self.INF, is_pv_node=True, ply=0)
+                hash_key = chess.polyglot.zobrist_hash(board)
+                best_move = self.tt[hash_key].best_move if hash_key in self.tt else best_move
+                if time.time() - self.start_time > self.time_limit:
+                    break
+        except TimeoutError:
+            pass
 
-        score = 0
-        for piece_type in self.piece_values:
-            score += len(board.pieces(piece_type, chess.WHITE)) * self.piece_values[piece_type]
-            score -= len(board.pieces(piece_type, chess.BLACK)) * self.piece_values[piece_type]
-        return score
+        if best_move is None:
+            raise TimeoutError("No best move found within time limit.")
 
-    def piece_square_value_evaluation(self, board):
-        # Placeholder for piece-square table evaluation
-        # This function can be implemented with specific piece-square tables for each piece type
-        return 0
-
+        return best_move, score, depth, self.node_count
