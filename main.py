@@ -34,11 +34,10 @@ def main(time_limit=4.0):
 
         # Check if it's the engine's (Black's) turn
         if not board.is_game_over() and board.turn == chess.BLACK:
-            engine_move, score, depth, node_count = engine.search(board, time_limit=time_limit)  # Engine gets 4 seconds
+            engine_move = engine.search(board, time_limit=time_limit)
             if engine_move:
                 board.push(engine_move)
-                print(f"move: {engine_move} ; score: {-score/100:.1f} ; depth reached: {depth} ; node_count: {node_count}")
-            continue  # Skip player input on engine turn
+                continue  # Skip player input on engine turn
 
         # Handle mouse clicks
         for event in pygame.event.get():
@@ -100,4 +99,4 @@ def main(time_limit=4.0):
 
 
 if __name__ == "__main__":
-    main(time_limit=4.0)
+    main(time_limit=10.0)

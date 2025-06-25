@@ -1,5 +1,6 @@
 import pygame
 import chess
+from board_helper_functions import is_promotion
 
 # --- Config ---
 WIDTH, HEIGHT = 640, 640
@@ -52,17 +53,6 @@ def get_square(pos):
     col = x // SQUARE_SIZE
     row = y // SQUARE_SIZE
     return chess.square(col, 7 - row)
-
-
-def is_promotion(board, move):
-    piece = board.piece_at(move.from_square)
-    if not piece or piece.piece_type != chess.PAWN:
-        return False
-    if piece.color == chess.WHITE and chess.square_rank(move.to_square) == 7:
-        return True
-    if piece.color == chess.BLACK and chess.square_rank(move.to_square) == 0:
-        return True
-    return False
 
 
 def highlight_legal_moves(screen, board, selected_square):
