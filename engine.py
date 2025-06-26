@@ -403,9 +403,11 @@ class ChessEngine:
         if best_move is None:
             raise TimeoutError("No best move found within time limit.")
 
+        duration = time.time() - self.start_time
+        speed = self.node_count / duration
         print_best_line_san(best_line, board.copy())
         print(f"move: {board.san(best_move)} ; score: {-score / 100:.1f} \n"
               f"depth reached: {depth} ; node_count: {self.node_count} ; q nodes: {self.q_nodes} \n"
-              f"tt_use_count: {self.tt_use_count} ; time: {time.time() - self.start_time:.2f} seconds")
+              f"tt_use_count: {self.tt_use_count} ; time: {duration:.2f} seconds ; speed: {speed:.0f} nodes/s")
 
         return best_move
