@@ -14,17 +14,7 @@ def is_promotion(board, move):
 
 
 def is_interesting(board, move):
-    if is_promotion(board, move):
-        return True
-    if board.gives_check(move):
-        return True
-    if board.is_capture(move):
-        # Only allow capture if victim is more valuable than attacker
-        attacker = board.piece_at(move.from_square)
-        victim = board.piece_at(move.to_square)
-        if attacker and victim and victim.piece_type >= attacker.piece_type:
-            return True
-    return False
+    return is_promotion(board, move) or board.gives_check(move) or board.is_capture(move)
 
 
 def hash_board(board):
