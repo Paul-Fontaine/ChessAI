@@ -9,7 +9,7 @@ def main(time_limit=4.0):
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('Chess')
     clock = pygame.time.Clock()
-    board = chess.Board('3K4/8/1k4p1/ppN5/3PP3/1P6/4n3/8 w - - 0 1')
+    board = chess.Board()
     engine = ChessEngine()
 
     load_images('gui/pieces_images')

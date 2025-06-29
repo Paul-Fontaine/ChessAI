@@ -2,6 +2,7 @@ import chess
 import chess.polyglot
 import time
 from board_helper_functions import *
+from nnue import HalfKANNUE
 
 KING_ENDGAME = 7
 MATE_SCORE = 30000
@@ -30,7 +31,7 @@ class ChessEngine:
         self.tt_use_count = 0
         self.start_time = 0
         self.time_limit = 1.0  # seconds
-        self.MAX_DEPTH = 6
+        self.MAX_DEPTH = 2
         self.killer_moves = [[None, None] for _ in range(self.MAX_DEPTH+5)]  # ply-indexed, 2 moves stored per depth
         self.history_heuristic = {}  # (from_square, to_square) -> score
         self.piece_value = {
@@ -111,6 +112,7 @@ class ChessEngine:
             ]
         }
         self.openning_book = chess.polyglot.open_reader('komodo.bin')
+        self.nnue = HalfKANNUE()
 
     # -----------------------------------
     # Basic Evaluation Function
@@ -136,11 +138,14 @@ class ChessEngine:
                 score += value if piece.color == chess.WHITE else -value
         return score
 
+    def evaluate_with_nnue(self, board):
+        return self.nnue.get_evaluation(board)
+
     def evaluate(self, board, ply=0):
         if board.is_checkmate():
             mate_eval = MATE_SCORE - ply
             return -mate_eval if board.turn else mate_eval  # board.turn is True if white's turn
-        return self.evaluate_with_PST(board)
+        return self.evaluate_with_nnue(board)
 
     def get_book_move(self, board):
         try:
@@ -149,9 +154,6 @@ class ChessEngine:
         except IndexError:
             return None
 
-    # -----------------------------------
-    # Move Ordering Heuristic
-    # -----------------------------------
     def order_moves(self, board, moves, tt_move=None, ply=0):
         def move_score(move):
             # PV move first
@@ -210,8 +212,10 @@ class ChessEngine:
                 continue
 
             board.push(move)
+            self.nnue.update_accumulator(board)
             score = -self.quiescence(board, -beta, -alpha, ply, q_depth + 1)
             board.pop()
+            self.nnue.update_accumulator(board)
 
             # Prune if score is too high
             if score >= beta:
@@ -265,6 +269,7 @@ class ChessEngine:
         ):
             R = 2  # Reduction amount
             board.push(chess.Move.null())
+            self.nnue.update_accumulator(board)
             try:
                 null_score, _ = self.alpha_beta(board, depth - 1 - R, -beta, -beta + 1, False, ply + 1)
                 null_score = -null_score
@@ -272,6 +277,7 @@ class ChessEngine:
                 board.pop()
                 raise
             board.pop()
+            self.nnue.update_accumulator(board)
 
             if null_score >= beta:
                 return null_score, []  # Prune the branch
@@ -315,6 +321,7 @@ class ChessEngine:
                     continue  # Skip this move as it probably won't raise alpha
 
             board.push(move)
+            self.nnue.update_accumulator(board)
             try:
                 child_is_pv = is_pv_node and (i == 0)
 
@@ -347,6 +354,7 @@ class ChessEngine:
                 board.pop()
                 raise
             board.pop()
+            self.nnue.update_accumulator(board)
 
             if score > best_score:
                 best_score = score
@@ -371,9 +379,7 @@ class ChessEngine:
 
         return best_score, best_line
 
-    # -----------------------------------
     # Iterative Deepening Search
-    # -----------------------------------
     def search(self, board, time_limit=1.0) -> chess.Move:
         book_move = self.get_book_move(board)
         if book_move:
@@ -387,6 +393,8 @@ class ChessEngine:
         self.start_time = time.time()
         self.time_limit = time_limit
         best_move = None
+        self.nnue.init_accumulator(board)
+
         try:
             for depth in range(1, self.MAX_DEPTH + 1):
                 score, best_line = self.alpha_beta(board, depth, -MATE_SCORE, MATE_SCORE, is_pv_node=True, ply=0)
