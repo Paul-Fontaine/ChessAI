@@ -141,9 +141,9 @@ class ChessEngine:
     def evaluate(self, board, ply=0):
         if board.is_checkmate():
             mate_eval = MATE_SCORE - ply
-            return -mate_eval if board.turn else mate_eval  # board.turn is True if white's turn
+            return -mate_eval
         score = self.evaluate_with_PST(board)
-        return score
+        return score if board.turn else -score
 
     def get_book_move(self, board):
         try:
@@ -157,6 +157,8 @@ class ChessEngine:
             # PV move first
             if tt_move and move == tt_move:
                 return 10000
+            if board.gives_check(move):
+                return 9000
             # Captures: MVV-LVA
             if board.is_capture(move):
                 victim = board.piece_at(move.to_square)
@@ -190,6 +192,9 @@ class ChessEngine:
         # Base score if we do nothing from here (stand-pat score)
         stand_pat = self.evaluate(board, ply)
 
+        if board.is_checkmate():
+            return stand_pat
+
         # Beta cutoff: we already have a better move earlier in the tree
         if stand_pat >= beta:
             return beta
@@ -203,10 +208,8 @@ class ChessEngine:
         ordered_moves = self.order_moves(board, interesting_moves)
         for move in ordered_moves:
             board.push(move)
-            self.nnue.update_accumulator(board)
             score = -self.quiescence(board, -beta, -alpha, ply+1, q_depth + 1)
             board.pop()
-            self.nnue.update_accumulator(board)
 
             # Prune if score is too high
             if score >= beta:
@@ -263,7 +266,6 @@ class ChessEngine:
         ):
             R = 2  # Reduction amount
             board.push(chess.Move.null())
-            self.nnue.update_accumulator(board)
             try:
                 null_score, _ = self.alpha_beta(board, depth - 1 - R, -beta, -beta + 1, False, ply + 1)
                 null_score = -null_score
@@ -271,7 +273,6 @@ class ChessEngine:
                 board.pop()
                 raise
             board.pop()
-            self.nnue.update_accumulator(board)
 
             if null_score >= beta:
                 return null_score, []  # Prune the branch
@@ -315,7 +316,6 @@ class ChessEngine:
                     continue  # Skip this move as it probably won't raise alpha
 
             board.push(move)
-            self.nnue.update_accumulator(board)
             try:
                 child_is_pv = is_pv_node and (i == 0)
 
@@ -348,7 +348,6 @@ class ChessEngine:
                 board.pop()
                 raise
             board.pop()
-            self.nnue.update_accumulator(board)
 
             if score > best_score:
                 best_score = score
@@ -394,10 +393,14 @@ class ChessEngine:
                 score, best_line = self.alpha_beta(board, depth, -MATE_SCORE, MATE_SCORE, is_pv_node=True, ply=0)
                 if best_line:
                     best_move = best_line[0]
-                print(f" depth : {depth} ; node_count: {self.node_count} ; q nodes: {self.q_nodes}")
+                print(f" depth : {depth} ; best move : {best_move} ; node_count: {self.node_count} ; q nodes: {self.q_nodes}")
 
-        except TimeoutError:
-            pass
+                if abs(score) >= MATE_SCORE-50:
+                    if depth >= MATE_SCORE - abs(score):
+                        raise TimeoutError("Checkmate found, stopping search.")
+
+        except TimeoutError as e:
+            print(e)
 
         if best_move is None:
             raise TimeoutError("No best move found within time limit.")
@@ -405,7 +408,16 @@ class ChessEngine:
         duration = time.time() - self.start_time
         speed = self.node_count / duration
         print_best_line_san(best_line, board.copy())
-        print(f"move: {board.san(best_move)} ; score: {-score / 100:.1f} \n"
+        if score < -(MATE_SCORE-50):
+            mate_in = (MATE_SCORE + score) // 2
+            score = f"#-{mate_in}"
+        elif score < MATE_SCORE-50:
+            score = f"{score / 100:.3f}"
+        elif score >= MATE_SCORE-50:
+            mate_in = (MATE_SCORE - score) // 2
+            score = f"#{mate_in}"
+
+        print(f"move: {board.san(best_move)} ; score: {score} \n"
               f"depth reached: {depth} ; node_count: {self.node_count} ; q nodes: {self.q_nodes} \n"
               f"tt_use_count: {self.tt_use_count} ; time: {duration:.2f} seconds ; speed: {speed:.0f} nodes/s")
 
