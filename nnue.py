@@ -5,8 +5,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
-class HalfKANNUE(nn.Module):
-    def __init__(self, input_dim=98304, hidden1=256, hidden2=32):
+class KPNNUE(nn.Module):
+    def __init__(self, input_dim=832, hidden1=256, hidden2=32):
         super().__init__()
         self.active_features_indices = set()
         self.accumulator = None  # Shared accumulator for feature transformation
@@ -29,42 +29,35 @@ class HalfKANNUE(nn.Module):
         return x
 
     @staticmethod
-    def encode_halfka(board: chess.Board) -> set:
-        def halfka_index(ksq: int, psq: int, piece: chess.Piece) -> int:
-            color_offset = 6 if piece.color == chess.BLACK else 0
-            piece_type_offset = color_offset + (piece.piece_type - 1)  # pawn=0, knight=1, ..., king=5
-            return ksq * (12 * 64) + piece_type_offset * 64 + psq
-
-        stm = board.turn
-        ksq_stm = board.king(stm)
-        ksq_opp = board.king(not stm)
-
+    def encode_kp(board: chess.Board) -> set:
         active = set()
 
-        for sq, piece in board.piece_map().items():
-            if piece.piece_type == chess.KING:
-                continue  # exclude kings
-            if piece.color == stm:
-                idx = halfka_index(ksq_stm, sq, piece)
-            else:
-                idx = halfka_index(ksq_opp, sq, piece) + 64 * (12 * 64)
+        # 1) Encode king square of side-to-move (first 64 features)
+        stm_king_sq = board.king(board.turn)
+        active.add(stm_king_sq)
+
+        # 2) Encode piece-square planes
+        offset = 64
+        for square, piece in board.piece_map().items():
+            piece_type_offset = piece.piece_type-1 + (6 if piece.color == chess.BLACK else 0)
+            idx = offset + piece_type_offset * 64 + square
             active.add(idx)
 
         return active  # list of int indices
 
     @staticmethod
     def tensor_from_active_indices(active_indices):
-        features = torch.zeros((1, 98304), dtype=torch.float32)
+        features = torch.zeros((1, 832), dtype=torch.float32)
         features[0, list(active_indices)] = 1.0
         return features
 
     def init_accumulator(self, board):
-        active_indices = self.encode_halfka(board)
+        active_indices = self.encode_kp(board)
         self.active_features_indices = active_indices
         self.accumulator = self.fc1.weight[:, list(active_indices)].sum(dim=1) + self.fc1.bias
 
     def update_accumulator(self, board_after_move):
-        features_indices_after = self.encode_halfka(board_after_move)
+        features_indices_after = self.encode_kp(board_after_move)
 
         removed = self.active_features_indices - features_indices_after
         added = features_indices_after - self.active_features_indices
@@ -78,8 +71,8 @@ class HalfKANNUE(nn.Module):
 
     def get_evaluation(self, board):
         self.eval()
-        active_features = self.encode_halfka(board)
-        features = torch.zeros((1, 98304), dtype=torch.float32)
+        active_features = self.encode_kp(board)
+        features = torch.zeros((1, 832), dtype=torch.float32)
         features[0, list(active_features)] = 1.0
         with torch.no_grad():
             score = self.forward(features)

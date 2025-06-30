@@ -2,3 +2,5 @@
 __pycache__/
 .vscode/
 runs/
+dataset.pkl
+nnue_weights.pth

@@ -3,25 +3,27 @@ import torch.nn as nn
 import torch.optim as optim
 from langchain_community.embeddings.dashscope import BATCH_SIZE
 from torch.utils.data import DataLoader, TensorDataset, random_split
-from nnue import HalfKANNUE
-from dataset import HalfKA_Dataset
+from nnue import KPNNUE
+from dataset import PositionsDataset
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
 # Initialize Model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
-model = HalfKANNUE()
+model = KPNNUE()
 model.to(device)
+model.load()  # Load pre-trained weights if available
 
 # Load Dataset
-dataset = HalfKA_Dataset("dataset.pt")
+dataset = PositionsDataset()
 
 # Split dataset
 num_samples = len(dataset)
-train_size = int(0.10 * num_samples)
+train_size = int(0.75 * num_samples)
 val_size = int(0.10 * num_samples)
 test_size = num_samples - train_size - val_size
+print(f"Dataset sizes - Train: {train_size}, Val: {val_size}, Test: {test_size}")
 
 train_dataset, val_dataset, test_dataset = random_split(
     dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42)
@@ -40,7 +42,7 @@ writer = SummaryWriter()
 
 
 def train_nnue():
-    EPOCHS = 20
+    EPOCHS = 100
     LR = 0.002
 
     # Loss and Optimizer
