@@ -2,7 +2,7 @@ import chess
 import chess.polyglot
 import time
 from board_helper_functions import *
-from nnue import HalfKANNUE
+from nnue import KPNNUE
 
 KING_ENDGAME = 7
 MATE_SCORE = 30000
@@ -31,7 +31,7 @@ class ChessEngine:
         self.tt_use_count = 0
         self.start_time = 0
         self.time_limit = 1.0  # seconds
-        self.MAX_DEPTH = 2
+        self.MAX_DEPTH = 6
         self.killer_moves = [[None, None] for _ in range(self.MAX_DEPTH+5)]  # ply-indexed, 2 moves stored per depth
         self.history_heuristic = {}  # (from_square, to_square) -> score
         self.piece_value = {
@@ -112,11 +112,8 @@ class ChessEngine:
             ]
         }
         self.openning_book = chess.polyglot.open_reader('komodo.bin')
-        self.nnue = HalfKANNUE()
+        self.nnue = KPNNUE()
 
-    # -----------------------------------
-    # Basic Evaluation Function
-    # -----------------------------------
     def count_material(self, board):
         score = 0
         for piece_type in self.piece_value:
@@ -138,14 +135,15 @@ class ChessEngine:
                 score += value if piece.color == chess.WHITE else -value
         return score
 
-    def evaluate_with_nnue(self, board):
-        return self.nnue.get_evaluation(board)
+    def evaluate_with_nnue(self):
+        return self.nnue.get_evaluation_incremental()
 
     def evaluate(self, board, ply=0):
         if board.is_checkmate():
             mate_eval = MATE_SCORE - ply
             return -mate_eval if board.turn else mate_eval  # board.turn is True if white's turn
-        return self.evaluate_with_nnue(board)
+        score = self.evaluate_with_PST(board)
+        return score
 
     def get_book_move(self, board):
         try:
@@ -179,15 +177,10 @@ class ChessEngine:
         """
         Quiescence search: extends search past depth 0 to avoid evaluating unstable positions.
         Only considers 'noisy' moves: captures, checks, and promotions.
-
-        Parameters:
-            - board: the current chess.Board()
-            - alpha, beta: alpha-beta pruning bounds
-            - q_depth: current depth of quiescence (for limiting)
-
         Returns:
             - score: best evaluation found in quiet positions
         """
+
         if q_depth > 0:
             self.q_nodes += 1
         # Safety: avoid infinite quiescence recursion
@@ -206,14 +199,12 @@ class ChessEngine:
             alpha = stand_pat
 
         # Loop over all legal moves
-        for move in board.legal_moves:
-            # Only consider "noisy" moves: captures, checks, promotions
-            if not is_interesting(board, move):
-                continue
-
+        interesting_moves = [move for move in board.legal_moves if is_interesting(board, move)]
+        ordered_moves = self.order_moves(board, interesting_moves)
+        for move in ordered_moves:
             board.push(move)
             self.nnue.update_accumulator(board)
-            score = -self.quiescence(board, -beta, -alpha, ply, q_depth + 1)
+            score = -self.quiescence(board, -beta, -alpha, ply+1, q_depth + 1)
             board.pop()
             self.nnue.update_accumulator(board)
 
@@ -228,6 +219,9 @@ class ChessEngine:
         return alpha
 
     def alpha_beta(self, board, depth, alpha, beta, is_pv_node, ply):
+        if time.time() - self.start_time > self.time_limit:
+            raise TimeoutError("Time limit exceeded during search.")
+
         self.node_count += 1
         hash_key = hash_board(board)
 
@@ -242,7 +236,7 @@ class ChessEngine:
             alpha = max(alpha, 0)
 
         if depth == 0:
-            return self.quiescence(board, alpha, beta, ply), []
+            return self.quiescence(board, alpha, beta, ply+1), []
 
         tt_move = None
         if hash_key in self.tt:
@@ -400,10 +394,7 @@ class ChessEngine:
                 score, best_line = self.alpha_beta(board, depth, -MATE_SCORE, MATE_SCORE, is_pv_node=True, ply=0)
                 if best_line:
                     best_move = best_line[0]
-                # if time.time() - self.start_time > self.time_limit:
-                #     break
-
-                # print(f" depth : {depth} ; node_count: {self.node_count} ; q nodes: {self.q_nodes}")
+                print(f" depth : {depth} ; node_count: {self.node_count} ; q nodes: {self.q_nodes}")
 
         except TimeoutError:
             pass

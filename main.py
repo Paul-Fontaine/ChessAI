@@ -99,4 +99,4 @@ def main(time_limit=4.0):
 
 
 if __name__ == "__main__":
-    main(time_limit=10.0)
+    main(time_limit=50.0)
